@@ -15,6 +15,10 @@ Minimal issuance API for the ENS Subname Infrastructure Toolkit.
   - returns a domain-bound message and one-time `challengeNonce` for wallet signature
 - `POST /claim-links/redeem`
   - body: `{ "token": "...", "recipient": "0x...", "challengeNonce": "...", "walletSignature": "0x..." }`
+- `GET /analytics`
+  - returns aggregate metrics (`totalSubnames`, `activeSubnames`, `revokedSubnames`, `uniqueHolders`)
+- `GET /events/recent?limit=25`
+  - returns recently indexed mint/revoke events
 
 ## Setup
 

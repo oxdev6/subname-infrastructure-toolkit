@@ -1,12 +1,13 @@
 import express from "express";
 import crypto from "node:crypto";
 import { ethers } from "ethers";
+import { createIndexStore } from "./indexStore.js";
 
 function claimToken() {
   return crypto.randomBytes(18).toString("base64url");
 }
 
-export function createApp({ registrar, rootDomain, claimSecret = "dev-secret" }) {
+export function createApp({ registrar, rootDomain, claimSecret = "dev-secret", indexStore = createIndexStore() }) {
   const app = express();
   app.use(express.json());
 
@@ -27,6 +28,13 @@ export function createApp({ registrar, rootDomain, claimSecret = "dev-secret" })
 
       const tx = await registrar.mintSubname(label, recipient, Number(expiresAt));
       const receipt = await tx.wait();
+      indexStore.applyMint({
+        label,
+        fqdn: `${label}.${rootDomain}`,
+        owner: recipient,
+        expiresAt: Number(expiresAt),
+        txHash: receipt.hash
+      });
 
       return res.status(201).json({
         success: true,
@@ -48,6 +56,10 @@ export function createApp({ registrar, rootDomain, claimSecret = "dev-secret" })
 
       const tx = await registrar.revokeSubname(label);
       const receipt = await tx.wait();
+      indexStore.applyRevoke({
+        label,
+        txHash: receipt.hash
+      });
 
       return res.json({
         success: true,
@@ -67,6 +79,14 @@ export function createApp({ registrar, rootDomain, claimSecret = "dev-secret" })
       }
 
       const [owner, expiresAt, revoked, active] = await registrar.getSubnameRecord(label);
+      indexStore.applyStatus({
+        label,
+        fqdn: `${label}.${rootDomain}`,
+        owner,
+        expiresAt,
+        revoked,
+        active
+      });
 
       return res.json({
         label,
@@ -221,6 +241,15 @@ Nonce:${nonce}`;
       challengeExpiresAt,
       message
     });
+  });
+
+  app.get("/analytics", (_req, res) => {
+    return res.json(indexStore.getAnalytics());
+  });
+
+  app.get("/events/recent", (req, res) => {
+    const limit = Number(req.query.limit || 25);
+    return res.json({ events: indexStore.getRecentEvents(limit) });
   });
 
   return app;

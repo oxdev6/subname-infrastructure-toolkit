@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import request from "supertest";
 import { ethers } from "ethers";
 import { createApp } from "../src/app.js";
+import { createIndexStore } from "../src/indexStore.js";
 
 function mockRegistrar() {
   return {
@@ -25,7 +26,8 @@ test("creates and redeems claim link", async () => {
   const app = createApp({
     registrar: mockRegistrar(),
     rootDomain: "project.eth",
-    claimSecret: "test-secret"
+    claimSecret: "test-secret",
+    indexStore: createIndexStore()
   });
 
   const createRes = await request(app)
@@ -76,7 +78,8 @@ test("rejects challenge nonce replay before claim is exhausted", async () => {
   const app = createApp({
     registrar: mockRegistrar(),
     rootDomain: "project.eth",
-    claimSecret: "test-secret"
+    claimSecret: "test-secret",
+    indexStore: createIndexStore()
   });
 
   const createRes = await request(app)
@@ -115,7 +118,8 @@ test("rejects invalid wallet signature for claim redeem", async () => {
   const app = createApp({
     registrar: mockRegistrar(),
     rootDomain: "project.eth",
-    claimSecret: "test-secret"
+    claimSecret: "test-secret",
+    indexStore: createIndexStore()
   });
 
   const createRes = await request(app)
@@ -145,7 +149,8 @@ test("returns subname status", async () => {
   const app = createApp({
     registrar: mockRegistrar(),
     rootDomain: "project.eth",
-    claimSecret: "test-secret"
+    claimSecret: "test-secret",
+    indexStore: createIndexStore()
   });
 
   const res = await request(app)
@@ -155,4 +160,31 @@ test("returns subname status", async () => {
 
   assert.equal(res.body.active, true);
   assert.equal(res.body.fqdn, "alice.project.eth");
+});
+
+test("returns analytics and recent events", async () => {
+  const app = createApp({
+    registrar: mockRegistrar(),
+    rootDomain: "project.eth",
+    claimSecret: "test-secret",
+    indexStore: createIndexStore()
+  });
+
+  await request(app)
+    .post("/mint-subname")
+    .send({
+      label: "analytics-user",
+      recipient: "0x000000000000000000000000000000000000bEEF",
+      expiresAt: Math.floor(Date.now() / 1000) + 3600
+    })
+    .expect(201);
+
+  const analytics = await request(app).get("/analytics").expect(200);
+  assert.equal(analytics.body.totalSubnames, 1);
+  assert.equal(analytics.body.activeSubnames, 1);
+  assert.equal(analytics.body.uniqueHolders, 1);
+
+  const events = await request(app).get("/events/recent").query({ limit: 5 }).expect(200);
+  assert.equal(Array.isArray(events.body.events), true);
+  assert.equal(events.body.events[0].type, "mint");
 });

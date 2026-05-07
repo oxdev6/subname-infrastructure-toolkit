@@ -11,6 +11,8 @@
   "scripts": {
     "test:contracts": "npm --workspace contracts test",
     "dev:backend": "npm --workspace backend run dev",
-    "test:backend": "npm --workspace backend test"
+    "test:backend": "npm --workspace backend test",
+    "dev:dashboard": "npm --workspace dashboard run dev",
+    "build:dashboard": "npm --workspace dashboard run build"
   }
 }
