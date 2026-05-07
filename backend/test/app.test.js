@@ -1,0 +1,158 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import request from "supertest";
+import { ethers } from "ethers";
+import { createApp } from "../src/app.js";
+
+function mockRegistrar() {
+  return {
+    mintSubname: async () => ({
+      wait: async () => ({ hash: "0xmint" })
+    }),
+    revokeSubname: async () => ({
+      wait: async () => ({ hash: "0xrevoke" })
+    }),
+    getSubnameRecord: async () => [
+      "0x000000000000000000000000000000000000dEaD",
+      2000000000n,
+      false,
+      true
+    ]
+  };
+}
+
+test("creates and redeems claim link", async () => {
+  const app = createApp({
+    registrar: mockRegistrar(),
+    rootDomain: "project.eth",
+    claimSecret: "test-secret"
+  });
+
+  const createRes = await request(app)
+    .post("/claim-links")
+    .send({ label: "alice", expiresAt: Math.floor(Date.now() / 1000) + 3600, maxClaims: 1 })
+    .expect(201);
+
+  assert.ok(createRes.body.token);
+
+  const wallet = ethers.Wallet.createRandom();
+  const challengeRes = await request(app)
+    .get("/claim-links/challenge")
+    .query({ token: createRes.body.token, recipient: wallet.address })
+    .expect(200);
+
+  const redeemRes = await request(app)
+    .post("/claim-links/redeem")
+    .send({
+      token: createRes.body.token,
+      recipient: wallet.address,
+      challengeNonce: challengeRes.body.challengeNonce,
+      walletSignature: await wallet.signMessage(challengeRes.body.message)
+    })
+    .expect(201);
+
+  assert.equal(redeemRes.body.success, true);
+  assert.equal(redeemRes.body.fqdn, "alice.project.eth");
+
+  const secondChallengeRes = await request(app)
+    .get("/claim-links/challenge")
+    .query({ token: createRes.body.token, recipient: wallet.address })
+    .expect(409);
+
+  assert.equal(secondChallengeRes.body.error, "claim already fully used");
+
+  await request(app)
+    .post("/claim-links/redeem")
+    .send({
+      token: createRes.body.token,
+      recipient: wallet.address,
+      challengeNonce: challengeRes.body.challengeNonce,
+      walletSignature: await wallet.signMessage(challengeRes.body.message)
+    })
+    .expect(409);
+});
+
+test("rejects challenge nonce replay before claim is exhausted", async () => {
+  const app = createApp({
+    registrar: mockRegistrar(),
+    rootDomain: "project.eth",
+    claimSecret: "test-secret"
+  });
+
+  const createRes = await request(app)
+    .post("/claim-links")
+    .send({ label: "sam", expiresAt: Math.floor(Date.now() / 1000) + 3600, maxClaims: 2 })
+    .expect(201);
+
+  const wallet = ethers.Wallet.createRandom();
+  const challengeRes = await request(app)
+    .get("/claim-links/challenge")
+    .query({ token: createRes.body.token, recipient: wallet.address })
+    .expect(200);
+
+  await request(app)
+    .post("/claim-links/redeem")
+    .send({
+      token: createRes.body.token,
+      recipient: wallet.address,
+      challengeNonce: challengeRes.body.challengeNonce,
+      walletSignature: await wallet.signMessage(challengeRes.body.message)
+    })
+    .expect(201);
+
+  await request(app)
+    .post("/claim-links/redeem")
+    .send({
+      token: createRes.body.token,
+      recipient: wallet.address,
+      challengeNonce: challengeRes.body.challengeNonce,
+      walletSignature: await wallet.signMessage(challengeRes.body.message)
+    })
+    .expect(409);
+});
+
+test("rejects invalid wallet signature for claim redeem", async () => {
+  const app = createApp({
+    registrar: mockRegistrar(),
+    rootDomain: "project.eth",
+    claimSecret: "test-secret"
+  });
+
+  const createRes = await request(app)
+    .post("/claim-links")
+    .send({ label: "eve", expiresAt: Math.floor(Date.now() / 1000) + 3600, maxClaims: 1 })
+    .expect(201);
+
+  const recipient = ethers.Wallet.createRandom();
+  const attacker = ethers.Wallet.createRandom();
+  const challengeRes = await request(app)
+    .get("/claim-links/challenge")
+    .query({ token: createRes.body.token, recipient: recipient.address })
+    .expect(200);
+
+  await request(app)
+    .post("/claim-links/redeem")
+    .send({
+      token: createRes.body.token,
+      recipient: recipient.address,
+      challengeNonce: challengeRes.body.challengeNonce,
+      walletSignature: await attacker.signMessage(challengeRes.body.message)
+    })
+    .expect(401);
+});
+
+test("returns subname status", async () => {
+  const app = createApp({
+    registrar: mockRegistrar(),
+    rootDomain: "project.eth",
+    claimSecret: "test-secret"
+  });
+
+  const res = await request(app)
+    .get("/subname-status")
+    .query({ label: "alice" })
+    .expect(200);
+
+  assert.equal(res.body.active, true);
+  assert.equal(res.body.fqdn, "alice.project.eth");
+});
