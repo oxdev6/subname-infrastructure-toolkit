@@ -13,6 +13,7 @@
     "dev:backend": "npm --workspace backend run dev",
     "test:backend": "npm --workspace backend test",
     "dev:dashboard": "npm --workspace dashboard run dev",
-    "build:dashboard": "npm --workspace dashboard run build"
+    "build:dashboard": "npm --workspace dashboard run build",
+    "test:sdk": "npm --workspace sdk test"
   }
 }
