@@ -7,8 +7,31 @@ function claimToken() {
   return crypto.randomBytes(18).toString("base64url");
 }
 
-export function createApp({ registrar, rootDomain, claimSecret = "dev-secret", indexStore = createIndexStore() }) {
+export function createApp({
+  registrar,
+  rootDomain,
+  claimSecret = "dev-secret",
+  indexStore = createIndexStore(),
+  corsOrigins = ["http://localhost:3000"]
+}) {
   const app = express();
+  const allowedOrigins =
+    Array.isArray(corsOrigins) && corsOrigins.length > 0 ? corsOrigins : ["http://localhost:3000"];
+
+  app.use((req, res, next) => {
+    const origin = req.headers.origin;
+    if (origin && allowedOrigins.includes(origin)) {
+      res.setHeader("Access-Control-Allow-Origin", origin);
+      res.setHeader("Vary", "Origin");
+      res.setHeader("Access-Control-Allow-Methods", "GET,HEAD,POST,OPTIONS");
+      res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+    }
+    if (req.method === "OPTIONS") {
+      return res.sendStatus(204);
+    }
+    return next();
+  });
+
   app.use(express.json());
 
   const claims = new Map();

@@ -188,3 +188,42 @@ test("returns analytics and recent events", async () => {
   assert.equal(Array.isArray(events.body.events), true);
   assert.equal(events.body.events[0].type, "mint");
 });
+
+test("handles CORS preflight for allowed dashboard origin", async () => {
+  const app = createApp({
+    registrar: mockRegistrar(),
+    rootDomain: "project.eth",
+    claimSecret: "test-secret",
+    indexStore: createIndexStore(),
+    corsOrigins: ["http://localhost:3000"]
+  });
+
+  const preflight = await request(app)
+    .options("/analytics")
+    .set("Origin", "http://localhost:3000")
+    .set("Access-Control-Request-Method", "GET")
+    .expect(204);
+
+  assert.equal(preflight.headers["access-control-allow-origin"], "http://localhost:3000");
+
+  const get = await request(app)
+    .get("/health")
+    .set("Origin", "http://localhost:3000")
+    .expect(200);
+
+  assert.equal(get.headers["access-control-allow-origin"], "http://localhost:3000");
+});
+
+test("does not reflect disallowed origins in CORS headers", async () => {
+  const app = createApp({
+    registrar: mockRegistrar(),
+    rootDomain: "project.eth",
+    claimSecret: "test-secret",
+    indexStore: createIndexStore(),
+    corsOrigins: ["http://localhost:3000"]
+  });
+
+  const res = await request(app).get("/health").set("Origin", "https://evil.example").expect(200);
+
+  assert.equal(res.headers["access-control-allow-origin"], undefined);
+});
